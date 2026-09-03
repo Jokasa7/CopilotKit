@@ -2624,6 +2624,7 @@
           "runtime",
           "basePath",
           "mode",
+          "inspectorLearning",
           "cors",
           "hooks",
           "activateChannels"
@@ -2751,6 +2752,7 @@
           "runtime",
           "basePath",
           "mode",
+          "inspectorLearning",
           "cors",
           "hooks",
           "activateChannels"
