@@ -8040,30 +8040,31 @@ export class WebInspectorElement extends LitElement {
         this.learningPollFailureCount += 1;
       }
     } finally {
-      if (generation !== this.learningRequestGeneration) return;
-      this.learningLoading = false;
-      this.learningRefreshing = false;
-      this.learningAbortController = null;
-      if (!core.telemetryDisabled) {
-        trackLearningSnapshotLoaded({
-          outcome: loadOutcome,
-          duration_bucket: learningDurationBucket(
-            performance.now() - startedAt,
-          ),
-          skills_bucket: learningCountBucket(loadedSkills),
-          insights_bucket: learningCountBucket(loadedInsights),
-          pending_threads_bucket: learningCountBucket(loadedPendingThreads),
-        });
-      }
-      this.scheduleLearningPoll();
-      this.requestUpdate();
-      this.trackLearningViewState();
-      if (resetSkillsPage || resetInsightsPage) {
-        void this.refreshLearningSnapshot({
-          preserve: true,
-          ...(resetSkillsPage ? { skillsPage: 1 } : {}),
-          ...(resetInsightsPage ? { insightsPage: 1 } : {}),
-        });
+      if (generation === this.learningRequestGeneration) {
+        this.learningLoading = false;
+        this.learningRefreshing = false;
+        this.learningAbortController = null;
+        if (!core.telemetryDisabled) {
+          trackLearningSnapshotLoaded({
+            outcome: loadOutcome,
+            duration_bucket: learningDurationBucket(
+              performance.now() - startedAt,
+            ),
+            skills_bucket: learningCountBucket(loadedSkills),
+            insights_bucket: learningCountBucket(loadedInsights),
+            pending_threads_bucket: learningCountBucket(loadedPendingThreads),
+          });
+        }
+        this.scheduleLearningPoll();
+        this.requestUpdate();
+        this.trackLearningViewState();
+        if (resetSkillsPage || resetInsightsPage) {
+          void this.refreshLearningSnapshot({
+            preserve: true,
+            ...(resetSkillsPage ? { skillsPage: 1 } : {}),
+            ...(resetInsightsPage ? { insightsPage: 1 } : {}),
+          });
+        }
       }
     }
   };
