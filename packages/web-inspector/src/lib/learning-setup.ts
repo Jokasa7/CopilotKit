@@ -12,10 +12,15 @@ let inMemoryMarker: LearningSetupMarker | null = null;
 
 export function normalizeLearningRuntimeUrl(
   runtimeUrl: string,
-  baseUri = document.baseURI,
+  baseUri?: string,
 ): string | null {
   try {
-    const url = new URL(runtimeUrl, baseUri);
+    const browserBaseUri =
+      baseUri ??
+      (typeof document === "undefined" ? undefined : document.baseURI);
+    const url = browserBaseUri
+      ? new URL(runtimeUrl, browserBaseUri)
+      : new URL(runtimeUrl);
     url.search = "";
     url.hash = "";
     url.pathname =

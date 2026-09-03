@@ -44,6 +44,20 @@ describe("Learning setup marker", () => {
     ).toBeNull();
   });
 
+  it("normalizes an absolute Runtime URL when no browser document exists", () => {
+    vi.stubGlobal("document", undefined);
+    try {
+      expect(
+        normalizeLearningRuntimeUrl(
+          "https://runtime.example/api/copilotkit/?secret=hidden#fragment",
+        ),
+      ).toBe("https://runtime.example/api/copilotkit");
+      expect(normalizeLearningRuntimeUrl("/api/copilotkit")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("retains a page-local marker when storage is unavailable", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("storage blocked");
