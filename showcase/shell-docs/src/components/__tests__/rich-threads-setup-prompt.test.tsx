@@ -64,9 +64,7 @@ test("copies the canonical Rich Threads repair prompt and announces success", as
   const { writeText, teardown } = setup();
 
   try {
-    fireEvent.click(
-      screen.getByRole("button", { name: "Copy setup prompt" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy prompt" }));
 
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(RICH_THREADS_SETUP_PROMPT),
@@ -106,9 +104,7 @@ test("reports a blocked Rich Threads prompt copy without claiming success", asyn
   );
 
   try {
-    fireEvent.click(
-      screen.getByRole("button", { name: "Copy setup prompt" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy prompt" }));
 
     expect(
       await screen.findByRole("button", { name: "Copy blocked" }),
@@ -129,12 +125,8 @@ test("ignores an older Rich Threads clipboard failure", async () => {
   const { teardown } = setup(writeText);
 
   try {
-    fireEvent.click(
-      screen.getByRole("button", { name: "Copy setup prompt" }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Copy setup prompt" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy prompt" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy prompt" }));
     expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
 
     firstCopy.reject(new Error("stale clipboard rejection"));
@@ -149,7 +141,7 @@ test("does not schedule Rich Threads copy feedback after unmount", async () => {
   const pendingCopy = createDeferredCopy();
   const { teardown } = setup(vi.fn().mockReturnValue(pendingCopy.promise));
 
-  fireEvent.click(screen.getByRole("button", { name: "Copy setup prompt" }));
+  fireEvent.click(screen.getByRole("button", { name: "Copy prompt" }));
   teardown();
   const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 

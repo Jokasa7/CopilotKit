@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Copy, SquareTerminal } from "lucide-react";
+import { SquareTerminal } from "lucide-react";
 import { RICH_THREADS_SETUP_PROMPT } from "@/lib/rich-threads-setup-prompt";
 
 export { RICH_THREADS_SETUP_PROMPT } from "@/lib/rich-threads-setup-prompt";
@@ -95,14 +95,13 @@ export function RichThreadsSetupPrompt(): React.JSX.Element {
           <button
             type="button"
             onClick={copyPrompt}
-            className="shell-docs-radius-control inline-flex min-h-10 w-full shrink-0 cursor-pointer items-center justify-center gap-2 border border-[var(--accent)] bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--primary-foreground)] transition-[background-color,transform] hover:bg-[var(--accent-strong)] active:translate-y-px focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)] focus-visible:outline-none"
+            className="shell-docs-radius-control inline-flex min-h-11 w-full shrink-0 cursor-pointer items-center justify-center border border-[var(--accent)] bg-[var(--accent)] px-5 text-sm font-semibold text-[var(--primary-foreground)] shadow-[var(--shadow-control)] transition-colors hover:bg-[var(--accent-strong)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)] focus-visible:outline-none"
           >
-            <Copy aria-hidden="true" className="h-4 w-4" />
             {copyState === "copied"
               ? "Copied"
               : copyState === "error"
                 ? "Copy blocked"
-                : "Copy setup prompt"}
+                : "Copy prompt"}
           </button>
         </div>
       </div>
