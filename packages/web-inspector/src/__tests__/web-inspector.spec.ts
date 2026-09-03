@@ -2670,14 +2670,14 @@ describe("WebInspectorElement owned thread store headers (#5581)", () => {
 
     harness.emitHeadersChanged({ "X-CSRF": "2" });
 
+    let eventCalls: unknown[][] = [];
     await vi.waitFor(() => {
-      expect(
-        fetchMock.mock.calls.filter((call) =>
-          String(call[0]).endsWith("/threads/thread-1/events"),
-        ),
-      ).toHaveLength(2);
+      eventCalls = fetchMock.mock.calls.filter((call) =>
+        String(call[0]).endsWith("/threads/thread-1/events"),
+      );
+      expect(eventCalls).toHaveLength(2);
     });
-    expect(headersOf(fetchMock.mock.calls.at(-1)!)).toMatchObject({
+    expect(headersOf(eventCalls.at(-1)!)).toMatchObject({
       "X-CSRF": "2",
     });
   });
