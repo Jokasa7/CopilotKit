@@ -153,6 +153,7 @@ export class AgentRegistry {
   private _intelligence?: IntelligenceRuntimeInfo;
   private _threadEndpoints?: ThreadEndpointRuntimeInfo;
   private _suggestions?: boolean;
+  private _inspectorLearning: boolean = false;
   private _inspectorMetadata?: InspectorMetadataV1;
   private _inspectorMetadataSupported: boolean = false;
   private inspectorMetadataRefreshReady: boolean = false;
@@ -236,6 +237,10 @@ export class AgentRegistry {
 
   get suggestions(): boolean | undefined {
     return this._suggestions;
+  }
+
+  get inspectorLearning(): boolean {
+    return this._inspectorLearning;
   }
 
   get inspectorMetadata(): InspectorMetadataV1 | undefined {
@@ -852,6 +857,7 @@ export class AgentRegistry {
 
   private invalidateInspectorMetadataConnection(): void {
     this._inspectorMetadataSupported = false;
+    this._inspectorLearning = false;
     this.inspectorMetadataRefreshReady = false;
     this.inspectorMetadataConnectionGeneration += 1;
     this.inspectorMetadataGeneration += 1;
@@ -1212,6 +1218,7 @@ export class AgentRegistry {
       this._intelligence = undefined;
       this._threadEndpoints = undefined;
       this._suggestions = undefined;
+      this._inspectorLearning = false;
       this._a2uiEnabled = false;
       this._a2uiAgents = undefined;
       this._openGenerativeUIEnabled = false;
@@ -1342,6 +1349,7 @@ export class AgentRegistry {
       this._intelligence = runtimeInfoResponse.intelligence;
       this._threadEndpoints = runtimeInfoResponse.threadEndpoints;
       this._suggestions = runtimeInfoResponse.suggestions;
+      this._inspectorLearning = runtimeInfoResponse.inspectorLearning === true;
       this._inspectorMetadataSupported =
         runtimeInfoResponse.inspectorMetadata === true;
       this.inspectorMetadataRefreshReady = false;
@@ -1420,6 +1428,7 @@ export class AgentRegistry {
         this._intelligence = undefined;
         this._threadEndpoints = undefined;
         this._suggestions = undefined;
+        this._inspectorLearning = false;
         this._a2uiEnabled = false;
         this._a2uiAgents = undefined;
         this._openGenerativeUIEnabled = false;
