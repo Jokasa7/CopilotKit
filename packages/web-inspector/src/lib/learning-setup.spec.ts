@@ -58,4 +58,47 @@ describe("Learning setup marker", () => {
     expect(readLearningSetupMarker()).toBeNull();
     expect(localStorage.getItem(LEARNING_SETUP_STORAGE_KEY)).toBeNull();
   });
+
+  it.each([
+    ["malformed", "not json"],
+    [
+      "unsupported",
+      JSON.stringify({
+        version: 2,
+        runtimeUrl: "https://runtime.example/api/copilotkit",
+        agentId: null,
+        startedAt: "2026-09-03T00:00:00.000Z",
+      }),
+    ],
+    [
+      "expired",
+      JSON.stringify({
+        version: 1,
+        runtimeUrl: "https://runtime.example/api/copilotkit",
+        agentId: null,
+        startedAt: "2026-08-01T00:00:00.000Z",
+      }),
+    ],
+  ])("removes a %s persisted record", (_label, raw) => {
+    localStorage.setItem(LEARNING_SETUP_STORAGE_KEY, raw);
+
+    expect(
+      readLearningSetupMarker(Date.parse("2026-09-03T00:00:00.000Z")),
+    ).toBeNull();
+    expect(localStorage.getItem(LEARNING_SETUP_STORAGE_KEY)).toBeNull();
+  });
+
+  it("removes invalid persistence without discarding a valid page-local fallback", () => {
+    const marker = writeLearningSetupMarker({
+      runtimeUrl: "https://runtime.example/api/copilotkit",
+      agentId: "checkout",
+      now: new Date("2026-09-03T00:00:00.000Z"),
+    });
+    localStorage.setItem(LEARNING_SETUP_STORAGE_KEY, "malformed");
+
+    expect(
+      readLearningSetupMarker(Date.parse("2026-09-03T01:00:00.000Z")),
+    ).toEqual(marker);
+    expect(localStorage.getItem(LEARNING_SETUP_STORAGE_KEY)).toBeNull();
+  });
 });

@@ -55,11 +55,10 @@ export function readLearningSetupMarker(
   now = Date.now(),
 ): LearningSetupMarker | null {
   try {
-    const persisted = parseMarker(
-      localStorage.getItem(LEARNING_SETUP_STORAGE_KEY),
-      now,
-    );
+    const raw = localStorage.getItem(LEARNING_SETUP_STORAGE_KEY);
+    const persisted = parseMarker(raw, now);
     if (persisted) return persisted;
+    if (raw !== null) localStorage.removeItem(LEARNING_SETUP_STORAGE_KEY);
   } catch {
     // The page-local fallback below preserves the interaction.
   }
@@ -118,7 +117,15 @@ export function subscribeToLearningSetupMarker(
 ): () => void {
   const handleStorage = (event: StorageEvent) => {
     if (event.key === LEARNING_SETUP_STORAGE_KEY) {
-      listener(parseMarker(event.newValue, Date.now()));
+      const marker = parseMarker(event.newValue, Date.now());
+      if (event.newValue !== null && marker === null) {
+        try {
+          localStorage.removeItem(LEARNING_SETUP_STORAGE_KEY);
+        } catch {
+          // Storage is optional; still notify the listener below.
+        }
+      }
+      listener(marker);
     }
   };
   window.addEventListener("storage", handleStorage);

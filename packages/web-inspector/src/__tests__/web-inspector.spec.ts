@@ -14,6 +14,7 @@ import type { CopilotKitCoreSubscriber } from "@copilotkit/core";
 import type { Memory } from "@copilotkit/core";
 import type { AbstractAgent, AgentSubscriber } from "@ag-ui/client";
 import type { InspectorOpenSource } from "../lib/telemetry.js";
+import type { InspectorLearningSnapshotV1 } from "@copilotkit/shared";
 import { describe, it, test, expect, vi, beforeEach, afterEach } from "vitest";
 
 // --- Types for accessing LitElement-private reactive properties ---
@@ -3453,6 +3454,365 @@ describe("WebInspectorElement memories — view states", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  const landingSnapshot: InspectorLearningSnapshotV1 = {
+    schemaVersion: 1,
+    projectKey: "project-safe-key",
+    snapshotVersion: "snapshot-landing",
+    webAppOrigin: "https://intelligence.customer.example",
+    configuration: { state: "not_configured" },
+    pendingThreadCount: 0,
+    run: { hasActiveRun: false, hasEverSucceeded: false, latest: null },
+    pendingCandidateCount: 0,
+    skillsPage: {
+      page: 1,
+      pageSize: 3,
+      total: 0,
+      totalPages: 0,
+      items: [],
+    },
+    insightsPage: {
+      page: 1,
+      pageSize: 4,
+      total: 0,
+      totalPages: 0,
+      items: [],
+    },
+    links: {
+      learning: "https://intelligence.customer.example/learning",
+      candidates: null,
+      runs: null,
+    },
+  };
+
+  const resultsSnapshot = (
+    overrides: Partial<InspectorLearningSnapshotV1> = {},
+  ): InspectorLearningSnapshotV1 => ({
+    ...landingSnapshot,
+    snapshotVersion: "snapshot-results",
+    configuration: {
+      state: "configured",
+      container: { id: "container-1", name: "Checkout Assistant" },
+    },
+    run: { hasActiveRun: false, hasEverSucceeded: true, latest: null },
+    skillsPage: {
+      page: 1,
+      pageSize: 3,
+      total: 0,
+      totalPages: 0,
+      items: [],
+    },
+    insightsPage: {
+      page: 1,
+      pageSize: 4,
+      total: 1,
+      totalPages: 1,
+      items: [
+        {
+          id: "insight-1",
+          statement: "Confirm the order before giving refund guidance.",
+          impact: "Customers get an accurate next step.",
+          totalThreadCount: 1,
+          evidenceTruncated: false,
+          evidence: [
+            {
+              status: "available",
+              threadId: "thread-1",
+              threadName: "Refund request #1798",
+              messageIds: ["message-1"],
+              updatedAt: "2026-09-03T19:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    },
+    links: {
+      learning: "https://intelligence.customer.example/learning",
+      candidates: null,
+      runs: null,
+    },
+    ...overrides,
+  });
+
+  const learningCore = (
+    fetch: ReturnType<typeof vi.fn>,
+    agents: Record<string, AbstractAgent> = {},
+  ) =>
+    Object.assign(makeCoreWithMemory([]), {
+      agents,
+      runtimeUrl: "https://runtime.customer.example/api/copilotkit",
+      runtimeTransport: "rest" as const,
+      inspectorLearning: true,
+      ɵruntimeFetch: fetch,
+    });
+
+  it("advances the existing Learning landing copy action into setup progress", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const core = Object.assign(makeCoreWithMemory([]), {
+      runtimeUrl: "https://runtime.customer.example/api/copilotkit",
+      runtimeTransport: "rest" as const,
+      inspectorLearning: true,
+    });
+    const el = await mountMemories(core);
+    const internals = el as unknown as {
+      learningSupported: boolean;
+      learningSnapshot: InspectorLearningSnapshotV1 | null;
+      learningSetupMarker: {
+        runtimeUrl: string;
+        agentId: string | null;
+      } | null;
+      selectedMenu: string;
+    };
+    internals.learningSupported = true;
+    internals.learningSnapshot = landingSnapshot;
+    el.requestUpdate();
+    await el.updateComplete;
+
+    const landing = el.shadowRoot?.querySelector(
+      '[data-inspector-locked-feature="memory"]',
+    );
+    expect(landing?.textContent).toContain(
+      "Turn every interaction into reusable context.",
+    );
+    const copy = landing?.querySelector<HTMLButtonElement>(
+      '[data-inspector-feature-setup-prompt="threads"]',
+    );
+    expect(copy).not.toBeNull();
+    copy?.click();
+
+    await vi.waitFor(() => {
+      expect(writeText).toHaveBeenCalledOnce();
+      expect(internals.learningSetupMarker).toMatchObject({
+        runtimeUrl: "https://runtime.customer.example/api/copilotkit",
+        agentId: null,
+      });
+    });
+    expect(internals.selectedMenu).toBe("memories");
+    await el.updateComplete;
+    const view = el.shadowRoot?.querySelector<HTMLElement>("cpk-learning-view");
+    await (view as HTMLElement & { updateComplete: Promise<void> })
+      .updateComplete;
+    expect(
+      view?.shadowRoot?.querySelector('[data-learning-state="setup"]'),
+    ).not.toBeNull();
+  });
+
+  it("keeps all-agents Learning unscoped when several agents are present", () => {
+    const alpha = createMockAgent("alpha").agent;
+    const beta = createMockAgent("beta").agent;
+    const core = makeCoreWithMemory([]);
+    core.agents = { alpha, beta };
+    const el = createInspectorWithCore(core as unknown as MockCore);
+    const internals = el as unknown as {
+      selectedContext: string;
+      getLearningAgentId: () => string | null;
+    };
+
+    internals.selectedContext = "all-agents";
+    expect(internals.getLearningAgentId()).toBeNull();
+    internals.selectedContext = "beta";
+    expect(internals.getLearningAgentId()).toBe("beta");
+  });
+
+  it("keeps Skills and Insights pagination independent through the integrated pane", async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const skillsPage = Number(url.searchParams.get("skillsPage") ?? "1");
+      const insightsPage = Number(url.searchParams.get("insightsPage") ?? "1");
+      return new Response(
+        JSON.stringify(
+          resultsSnapshot({
+            snapshotVersion: `snapshot-${skillsPage}-${insightsPage}`,
+            skillsPage: {
+              page: skillsPage,
+              pageSize: 3,
+              total: 4,
+              totalPages: 2,
+              items: Array.from(
+                { length: skillsPage === 1 ? 3 : 1 },
+                (_, index) => ({
+                  id: `skill-${skillsPage}-${index}`,
+                  name: `skill-page-${skillsPage}-${index}`,
+                  description: "Use this Skill for support requests.",
+                  revision: 1,
+                  skillMd: "# Skill",
+                  sourceInsight: null,
+                }),
+              ),
+            },
+            insightsPage: {
+              ...resultsSnapshot().insightsPage,
+              page: insightsPage,
+              total: 5,
+              totalPages: 2,
+              items: Array.from(
+                { length: insightsPage === 1 ? 4 : 1 },
+                (_, index) => ({
+                  ...resultsSnapshot().insightsPage.items[0]!,
+                  id: `insight-${insightsPage}-${index}`,
+                }),
+              ),
+            },
+          }),
+        ),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const el = await mountMemories(learningCore(fetch));
+    const view = await learningSurface(el);
+    await vi.waitFor(() => {
+      expect(
+        view.shadowRoot?.querySelector("[data-learning-state='results']"),
+      ).not.toBeNull();
+    });
+
+    view.shadowRoot
+      ?.querySelector<HTMLButtonElement>(
+        "nav[aria-label='insights pages'] button:last-child",
+      )
+      ?.click();
+    await vi.waitFor(() => {
+      expect(
+        fetch.mock.calls.some(([input]) =>
+          String(input).includes("skillsPage=1&insightsPage=2"),
+        ),
+      ).toBe(true);
+      expect(
+        (
+          view as HTMLElement & {
+            snapshot: InspectorLearningSnapshotV1 | null;
+          }
+        ).snapshot?.insightsPage.page,
+      ).toBe(2);
+    });
+
+    view.shadowRoot
+      ?.querySelector<HTMLButtonElement>(
+        "nav[aria-label='skills pages'] button:last-child",
+      )
+      ?.click();
+    await vi.waitFor(() => {
+      expect(
+        fetch.mock.calls.some(([input]) =>
+          String(input).includes("skillsPage=2&insightsPage=2"),
+        ),
+      ).toBe(true);
+    });
+    el.remove();
+  });
+
+  it("clears the prior scope and refetches when the Inspector agent changes", async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const agentId = url.searchParams.get("agentId");
+      return new Response(
+        JSON.stringify(
+          resultsSnapshot({
+            projectKey: agentId ? `project-${agentId}` : "project-all",
+            snapshotVersion: agentId ? `snapshot-${agentId}` : "snapshot-all",
+          }),
+        ),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const alpha = createMockAgent("alpha").agent;
+    const beta = createMockAgent("beta").agent;
+    const el = await mountMemories(learningCore(fetch, { alpha, beta }));
+    const internals = el as unknown as {
+      contextOptions: Array<{ key: string; label: string }>;
+      handleContextOptionSelect: (key: string) => void;
+      learningSnapshot: InspectorLearningSnapshotV1 | null;
+    };
+    await vi.waitFor(() => {
+      expect(internals.learningSnapshot?.projectKey).toBe("project-all");
+    });
+
+    internals.handleContextOptionSelect("beta");
+    expect(internals.learningSnapshot).toBeNull();
+    await vi.waitFor(() => {
+      expect(internals.learningSnapshot?.projectKey).toBe("project-beta");
+    });
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).includes("agentId=beta"),
+      ),
+    ).toBe(true);
+    el.remove();
+  });
+
+  it("routes accessible evidence through the integrated Threads navigator", async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify(resultsSnapshot()), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const el = await mountMemories(learningCore(fetch));
+    const view = await learningSurface(el);
+    await vi.waitFor(() => {
+      expect(view.shadowRoot?.querySelector(".insight-row")).not.toBeNull();
+    });
+    const focusThread = vi.fn();
+    (el as unknown as { focusThread: typeof focusThread }).focusThread =
+      focusThread;
+
+    view.shadowRoot?.querySelector<HTMLButtonElement>(".insight-row")?.click();
+    await (view as HTMLElement & { updateComplete: Promise<void> })
+      .updateComplete;
+    view.shadowRoot
+      ?.querySelector<HTMLButtonElement>(".evidence-link")
+      ?.click();
+    expect(focusThread).toHaveBeenCalledWith({
+      threadId: "thread-1",
+      messageId: "message-1",
+    });
+    el.remove();
+  });
+
+  it("renders a retryable data error when a pending action link is missing", async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify(
+            resultsSnapshot({
+              pendingThreadCount: 2,
+              links: {
+                learning: "https://intelligence.customer.example/learning",
+                candidates: null,
+                runs: null,
+              },
+            }),
+          ),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+    );
+    const el = await mountMemories(learningCore(fetch));
+    const view = await learningSurface(el);
+
+    await vi.waitFor(() => {
+      expect(
+        view.shadowRoot?.querySelector('[data-learning-state="error"]'),
+      ).not.toBeNull();
+    });
+    expect(view.shadowRoot?.textContent).toContain(
+      "Learning snapshot response is invalid.",
+    );
+    expect(
+      Array.from(
+        view.shadowRoot?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+      ).some((button) => button.textContent?.trim() === "Retry"),
+    ).toBe(true);
+    expect(view.shadowRoot?.querySelector("a")).toBeNull();
+    el.remove();
   });
 
   it("renders the unsupported Learning surface when the capability is absent", async () => {

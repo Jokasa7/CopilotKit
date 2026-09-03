@@ -7844,7 +7844,11 @@ export class WebInspectorElement extends LitElement {
     ) {
       return this.selectedContext;
     }
-    return Object.keys(this.core?.agents ?? {})[0] ?? null;
+    // `all-agents` is intentionally unscoped. Choosing the first object key
+    // silently binds Learning to whichever agent happened to be enumerated
+    // first and can select the wrong container. Omit agentId so Intelligence
+    // applies its deterministic sole-container / selection-required rules.
+    return null;
   }
 
   private isLearningSetupActive(): boolean {
@@ -13408,13 +13412,18 @@ export class WebInspectorElement extends LitElement {
   private renderFeatureSetupPrompt(
     serviceId: HomeFeaturePromptId,
     className: string,
+    options?: Readonly<{
+      copyState?: HomeFeaturePromptCopyState;
+      onClick?: (event: Event) => void;
+    }>,
   ): TemplateResult | typeof nothing {
     const service = this.getHomeFeaturePromptTarget(serviceId);
     if (!service) return nothing;
     const copyState =
-      this.homeFeaturePromptCopyState?.serviceId === service.id
+      options?.copyState ??
+      (this.homeFeaturePromptCopyState?.serviceId === service.id
         ? this.homeFeaturePromptCopyState.state
-        : "idle";
+        : "idle");
     const label =
       copyState === "copied"
         ? "Copied"
@@ -13438,7 +13447,9 @@ export class WebInspectorElement extends LitElement {
               : `Copy setup prompt for ${service.label}`
         }
         @click=${(event: Event) =>
-          this.handleHomeFeaturePromptCopy(service, event)}
+          options?.onClick
+            ? options.onClick(event)
+            : this.handleHomeFeaturePromptCopy(service, event)}
       >
         ${this.renderIcon(copyState === "copied" ? "Check" : "Copy")}
         ${label}
@@ -18063,6 +18074,7 @@ export class WebInspectorElement extends LitElement {
     videoUrl,
     videoTitle,
     outlineItems,
+    setupPrompt,
   }: {
     serviceId: HomeFeaturePromptId;
     featureName: string;
@@ -18071,6 +18083,11 @@ export class WebInspectorElement extends LitElement {
     videoUrl: string;
     videoTitle: string;
     outlineItems: ReadonlyArray<LockedFeatureOutlineItem>;
+    setupPrompt?: Readonly<{
+      serviceId: HomeFeaturePromptId;
+      copyState: HomeFeaturePromptCopyState;
+      onClick: (event: Event) => void;
+    }>;
   }) {
     return html`
       <div
@@ -18094,8 +18111,14 @@ export class WebInspectorElement extends LitElement {
               <p class="cpk-locked-feature-description">${description}</p>
               <div class="cpk-threads-overview-actions">
                 ${this.renderFeatureSetupPrompt(
-                  serviceId,
+                  setupPrompt?.serviceId ?? serviceId,
                   "inspector-account-cta cpk-locked-feature-setup-cta",
+                  setupPrompt
+                    ? {
+                        copyState: setupPrompt.copyState,
+                        onClick: setupPrompt.onClick,
+                      }
+                    : undefined,
                 )}
                 <a
                   data-inspector-locked-feature-talk=${serviceId}
@@ -18305,6 +18328,30 @@ export class WebInspectorElement extends LitElement {
   }
 
   private renderMemoriesView() {
+    const state = deriveLearningViewState({
+      supported: this.learningSupported,
+      loading: this.learningLoading,
+      error: this.learningError,
+      snapshot: this.learningSnapshot,
+      setupActive: this.isLearningSetupActive(),
+    });
+    if (state === "landing") {
+      return this.renderLockedFeatureOverview({
+        serviceId: "memory",
+        featureName: "Learning",
+        heading: "Turn every interaction into reusable context.",
+        description:
+          "Learning captures durable information from agent interactions and brings it back when it matters, so your product gets more useful over time.",
+        videoUrl: LEARNING_LOCKED_VIDEO_URL,
+        videoTitle: "CopilotKit Learning overview",
+        outlineItems: LEARNING_LOCKED_FEATURE_OUTLINE,
+        setupPrompt: {
+          serviceId: "threads",
+          copyState: this.learningPromptCopyState,
+          onClick: (event) => void this.handleLearningSetupCopy(event),
+        },
+      });
+    }
     return html`
       <cpk-learning-view
         .supported=${this.learningSupported}

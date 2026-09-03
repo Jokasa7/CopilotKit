@@ -8,6 +8,7 @@ const snapshot = {
   schemaVersion: 1,
   projectKey: "project-safe-key",
   snapshotVersion: "snapshot-1",
+  webAppOrigin: "https://app.copilotkit.ai",
   configuration: { state: "not_configured" },
   pendingThreadCount: 0,
   run: { hasActiveRun: false, hasEverSucceeded: false, latest: null },

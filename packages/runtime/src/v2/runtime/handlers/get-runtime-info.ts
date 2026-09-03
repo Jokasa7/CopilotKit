@@ -67,6 +67,7 @@ interface HandleGetRuntimeInfoParameters {
   runtime: CopilotRuntimeLike;
   request: Request;
   threadEndpointsEnabled?: boolean;
+  inspectorLearningEnabled?: boolean;
 }
 
 /**
@@ -112,6 +113,7 @@ export async function handleGetRuntimeInfo({
   runtime,
   request,
   threadEndpointsEnabled = true,
+  inspectorLearningEnabled = false,
 }: HandleGetRuntimeInfoParameters) {
   try {
     const runtimeEntitlementsPromise = resolveRuntimeEntitlements(runtime);
@@ -174,7 +176,7 @@ export async function handleGetRuntimeInfo({
               wsUrl: runtime.intelligence.ɵgetClientWsUrl(),
             },
             inspectorMetadata: true,
-            ...(runtime.debug.enabled && threadEndpointsEnabled
+            ...(runtime.debug.enabled && inspectorLearningEnabled
               ? { inspectorLearning: true }
               : {}),
           }

@@ -1,275 +1,232 @@
-import type { InspectorLearningSnapshotV1 } from "@copilotkit/shared";
-import { CpkLearningView } from "../src/components/learning-view.js";
-import type { LearningViewState } from "../src/components/learning-view.js";
-
-type ScreenshotState =
-  | LearningViewState
-  | "candidates-only"
-  | "copy-error"
-  | "insights-only"
-  | "refreshing-results"
-  | "results-error"
-  | "results-evidence"
-  | "setup-prompt";
-
-const page = <T>(pageSize: 3 | 4, items: readonly T[]) => ({
-  page: 1,
-  pageSize,
-  total: items.length,
-  totalPages: items.length === 0 ? 0 : 1,
-  items,
-});
-
-const sourceInsight = {
-  id: "insight-source",
-  statement:
-    "Users ask for a concise status before they ask for implementation details.",
-  impact:
-    "Leading with the outcome shortens support loops and makes the next action obvious.",
-  totalThreadCount: 3,
-  evidenceTruncated: false,
-  evidence: [
-    {
-      threadId: "thread-onboarding",
-      threadName: "Enterprise onboarding",
-      messageIds: ["message-1", "message-2"],
-      updatedAt: "2026-03-09T14:00:00.000Z",
-    },
-    {
-      threadId: "thread-support",
-      threadName: "Support escalation",
-      messageIds: ["message-3"],
-      updatedAt: "2026-03-08T12:00:00.000Z",
-    },
-  ],
-} as const;
-
-const insights = [
-  {
-    id: "insight-standalone-1",
-    statement:
-      "Teams verify evidence before accepting a generated recommendation.",
-    impact:
-      "Direct Thread links increase trust and let reviewers resolve ambiguity without leaving their workflow.",
-    totalThreadCount: 5,
-    evidenceTruncated: false,
-    evidence: [
-      {
-        threadId: "thread-review",
-        threadName: "Quarterly quality review",
-        messageIds: ["message-4", "message-5", "message-6"],
-        updatedAt: "2026-03-10T09:15:00.000Z",
-      },
-    ],
-  },
-  {
-    id: "insight-standalone-2",
-    statement: "Operators retry setup after the first captured Thread appears.",
-    impact:
-      "A persistent progress state prevents duplicate configuration work during the first Learning run.",
-    totalThreadCount: 2,
-    evidenceTruncated: false,
-    evidence: [],
-  },
-] as const;
-
-const skills = [
-  {
-    id: "skill-outcome-first",
-    name: "Lead with the outcome",
-    description:
-      "Answer with the completed result or current state before implementation detail.",
-    revision: 3,
-    skillMd:
-      "# Lead with the outcome\n\nState the result in the first sentence. Follow with only the context needed to verify it.\n\n## Guardrail\n\nDo not expose private identifiers, credentials, or raw conversation content.",
-    sourceInsight,
-  },
-  {
-    id: "skill-evidence-links",
-    name: "Keep evidence navigable",
-    description:
-      "Link a recommendation back to the exact Thread evidence that supports it.",
-    revision: 1,
-    skillMd:
-      "# Keep evidence navigable\n\nGroup supporting messages by Thread and preserve their stable order.",
-    sourceInsight: null,
-  },
-] as const;
-
-const baseSnapshot = (
-  overrides: Partial<InspectorLearningSnapshotV1> = {},
-): InspectorLearningSnapshotV1 => ({
-  schemaVersion: 1,
-  projectKey: "project-safe-key",
-  snapshotVersion: "snapshot-1",
-  configuration: { state: "not_configured" },
-  pendingThreadCount: 0,
-  run: { hasActiveRun: false, hasEverSucceeded: false, latest: null },
-  pendingCandidateCount: 0,
-  skillsPage: page(3, []),
-  insightsPage: page(4, []),
-  links: {
-    learning: "https://app.copilotkit.ai/learning",
-    candidates: null,
-    runs: null,
-  },
-  ...overrides,
-});
-
-const configured = {
-  state: "configured" as const,
-  container: { id: "production", name: "Production agent" },
-};
-
-const results = baseSnapshot({
-  configuration: configured,
-  pendingThreadCount: 4,
-  run: {
-    hasActiveRun: false,
-    hasEverSucceeded: true,
-    latest: { status: "succeeded", completedAt: "2026-03-10T09:00:00.000Z" },
-  },
-  pendingCandidateCount: 2,
-  skillsPage: page(3, skills),
-  insightsPage: page(4, insights),
-  links: {
-    learning: "https://app.copilotkit.ai/learning?container=production",
-    candidates:
-      "https://app.copilotkit.ai/learning?container=production&tab=candidates",
-    runs: "https://app.copilotkit.ai/learning?container=production&tab=runs",
-  },
-});
+import {
+  CopilotKitCore,
+  CopilotKitCoreRuntimeConnectionStatus,
+} from "@copilotkit/core";
+import {
+  WEB_INSPECTOR_TAG,
+  configureWebInspectorElement,
+} from "@copilotkit/web-inspector";
+import type { WebInspectorElement } from "@copilotkit/web-inspector";
+import {
+  isLearningScreenshotState,
+  LEARNING_LAB_BASE_PATH,
+} from "./learning-state-fixtures.js";
+import type { LearningScreenshotState } from "./learning-state-fixtures.js";
 
 const query = new URLSearchParams(window.location.search);
-const requested = (query.get("state") ?? "results") as ScreenshotState;
-const view = document.querySelector("cpk-learning-view");
-if (!(view instanceof CpkLearningView))
-  throw new Error("Learning view did not mount.");
+const requestedState = query.get("state");
+const state: LearningScreenshotState = isLearningScreenshotState(requestedState)
+  ? requestedState
+  : "success";
+const runtimeTransport =
+  query.get("transport") === "single" ? "single" : "rest";
+const narrow = window.innerWidth <= 900;
 
-view.supported = true;
-view.loading = false;
-view.error = null;
-view.snapshot = baseSnapshot();
-view.setupActive = false;
-view.setupPrompt =
-  "Implement Rich Threads for this CopilotKit application. Preserve the host application's authentication policy, enable debug-only Inspector access, and verify one Thread can be captured without starting a Learning run.";
+window.localStorage.removeItem("cpk:inspector:learning-setup:v1");
+window.localStorage.setItem(
+  "cpk:inspector:state",
+  JSON.stringify({
+    isOpen: true,
+    hasOpenedInspector: true,
+    selectedMenu: "memories",
+    selectedContext: "Checkout Assistant",
+    dockMode: narrow ? "docked-left" : "floating",
+    sidebarCollapsed: false,
+    colorSchemePreference: "light",
+    window: {
+      size: {
+        width: narrow ? window.innerWidth - 32 : window.innerWidth - 96,
+        height: narrow ? window.innerHeight : window.innerHeight - 48,
+      },
+      hasCustomPosition: false,
+    },
+  }),
+);
 
-switch (requested) {
-  case "unsupported":
-    view.supported = false;
-    view.snapshot = null;
-    break;
-  case "loading":
-    view.loading = true;
-    view.snapshot = null;
-    break;
-  case "error":
-    view.error =
-      "The runtime could not reach CopilotKit Intelligence. Check the connection and retry.";
-    view.snapshot = null;
-    break;
-  case "selection_required":
-    view.snapshot = baseSnapshot({
-      configuration: { state: "selection_required" },
-    });
-    break;
-  case "invalid":
-  case "setup-prompt":
-    view.snapshot = baseSnapshot({
-      configuration: { state: "invalid", reason: "instrumentation" },
-    });
-    break;
-  case "landing":
-    break;
-  case "copy-error":
-    view.copyState = "error";
-    break;
-  case "setup":
-    view.setupActive = true;
-    break;
-  case "first_run":
-    view.snapshot = baseSnapshot({
-      configuration: configured,
-      run: {
-        hasActiveRun: true,
-        hasEverSucceeded: false,
-        latest: { status: "reducing", completedAt: null },
-      },
-      links: {
-        learning: "https://app.copilotkit.ai/learning?container=production",
-        candidates: null,
-        runs: "https://app.copilotkit.ai/learning?container=production&tab=runs",
-      },
-    });
-    break;
-  case "ready":
-    view.snapshot = baseSnapshot({
-      configuration: configured,
-      pendingThreadCount: 3,
-      links: {
-        learning: "https://app.copilotkit.ai/learning?container=production",
-        candidates: null,
-        runs: "https://app.copilotkit.ai/learning?container=production&tab=runs",
-      },
-    });
-    break;
-  case "empty":
-    view.snapshot = baseSnapshot({
-      configuration: configured,
-      run: {
-        hasActiveRun: false,
-        hasEverSucceeded: true,
-        latest: {
-          status: "succeeded",
-          completedAt: "2026-03-10T09:00:00.000Z",
-        },
-      },
-      links: {
-        learning: "https://app.copilotkit.ai/learning?container=production",
-        candidates: null,
-        runs: "https://app.copilotkit.ai/learning?container=production&tab=runs",
+if (state === "copy-error") {
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: () => Promise.reject(new Error("Clipboard denied")) },
+  });
+}
+
+const runtimeUrl = `${window.location.origin}${LEARNING_LAB_BASE_PATH}/${state}`;
+const core = new CopilotKitCore({
+  runtimeUrl,
+  runtimeTransport,
+  deferInitialConnection: true,
+});
+const inspector = configureWebInspectorElement(
+  document.createElement(WEB_INSPECTOR_TAG),
+  core,
+);
+document.querySelector("#inspector-host")?.replaceChildren(inspector);
+
+function waitFor<T>(
+  read: () => T | null | undefined | false,
+  label: string,
+  timeoutMs = 10_000,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const started = performance.now();
+    const tick = () => {
+      const value = read();
+      if (value) {
+        resolve(value);
+        return;
+      }
+      if (performance.now() - started >= timeoutMs) {
+        reject(new Error(`Timed out waiting for ${label}.`));
+        return;
+      }
+      window.setTimeout(tick, 20);
+    };
+    tick();
+  });
+}
+
+async function waitForConnection(): Promise<void> {
+  if (
+    core.runtimeConnectionStatus ===
+      CopilotKitCoreRuntimeConnectionStatus.Connected ||
+    core.runtimeConnectionStatus === CopilotKitCoreRuntimeConnectionStatus.Error
+  ) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const subscription = core.subscribe({
+      onRuntimeConnectionStatusChanged: ({ status }) => {
+        if (
+          status !== CopilotKitCoreRuntimeConnectionStatus.Connected &&
+          status !== CopilotKitCoreRuntimeConnectionStatus.Error
+        ) {
+          return;
+        }
+        subscription.unsubscribe();
+        resolve();
       },
     });
-    break;
-  case "results":
-  case "results-evidence":
-    view.snapshot = results;
-    break;
-  case "insights-only":
-    view.snapshot = baseSnapshot({
-      ...results,
-      pendingCandidateCount: 1,
-      skillsPage: page(3, []),
-      insightsPage: page(4, insights),
-    });
-    break;
-  case "candidates-only":
-    view.snapshot = baseSnapshot({
-      configuration: configured,
-      pendingCandidateCount: 2,
-      links: results.links,
-    });
-    break;
-  case "results-error":
-    view.snapshot = results;
-    view.error =
+  });
+}
+
+function learningView():
+  | (HTMLElement & { updateComplete: Promise<boolean> })
+  | null {
+  return (
+    inspector.shadowRoot?.querySelector<
+      HTMLElement & { updateComplete: Promise<boolean> }
+    >("cpk-learning-view") ?? null
+  );
+}
+
+async function readyIntegratedState(): Promise<void> {
+  await inspector.updateComplete;
+  const internals = inspector as unknown as {
+    handleMenuSelect: (key: "memories") => void;
+    learningError: string | null;
+  };
+  internals.handleMenuSelect("memories");
+  await inspector.updateComplete;
+
+  if (state === "landing" || state === "copy-error") {
+    const landing = await waitFor(
+      () =>
+        inspector.shadowRoot?.querySelector<HTMLElement>(
+          '[data-inspector-locked-feature="memory"]',
+        ),
+      "the existing Learning landing surface",
+    );
+    if (state === "copy-error") {
+      landing
+        .querySelector<HTMLButtonElement>(
+          '[data-inspector-feature-setup-prompt="threads"]',
+        )
+        ?.click();
+      await waitFor(
+        () => landing.querySelector('[data-copy-state="error"]'),
+        "the landing copy error",
+      );
+    }
+    return;
+  }
+
+  const view = await waitFor(learningView, "the integrated Learning pane");
+  const expectedState: Record<string, string> = {
+    "no-threads": "setup",
+    "threads-available": "ready",
+    success: "results",
+    "insights-only": "results",
+    "multiple-skills": "results",
+    "new-threads": "results",
+    "empty-results": "empty",
+    "setup-error": "invalid",
+    unsupported: "unsupported",
+    loading: "loading",
+    "data-error": "error",
+    "selection-required": "selection_required",
+    "first-run": "first_run",
+    "candidates-only": "results",
+    "results-error": "results",
+    "results-evidence": "results",
+    "evidence-unavailable": "results",
+    "setup-prompt": "invalid",
+  };
+  await waitFor(
+    () =>
+      view.shadowRoot?.querySelector(
+        `[data-learning-state="${expectedState[state]}"]`,
+      ),
+    `${state} Learning state`,
+  );
+
+  if (state === "results-error") {
+    internals.learningError =
       "Learning could not refresh. Existing results are still available.";
-    break;
-  case "refreshing-results":
-    view.snapshot = results;
-    view.refreshing = true;
-    break;
+    inspector.requestUpdate();
+    await inspector.updateComplete;
+    await view.updateComplete;
+  }
+  if (state === "results-evidence" || state === "evidence-unavailable") {
+    view.shadowRoot?.querySelector<HTMLButtonElement>(".insight-row")?.click();
+    await view.updateComplete;
+    await waitFor(
+      () => view.shadowRoot?.querySelector(".detail-panel"),
+      "Insight evidence",
+    );
+  }
+  if (state === "setup-prompt") {
+    view.shadowRoot?.querySelector<HTMLButtonElement>(".prompt-link")?.click();
+    await view.updateComplete;
+    await waitFor(
+      () => view.shadowRoot?.querySelector('[role="dialog"]'),
+      "the setup prompt",
+    );
+  }
 }
 
-await view.updateComplete;
-if (requested === "results-evidence") {
-  view.shadowRoot?.querySelector<HTMLButtonElement>(".source")?.click();
-  await view.updateComplete;
+async function boot(): Promise<void> {
+  core.connect();
+  await waitForConnection();
+  await readyIntegratedState();
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+  document.body.dataset.state = state;
+  document.body.dataset.transport = runtimeTransport;
+  document.documentElement.dataset.ready = "true";
 }
-if (requested === "setup-prompt") {
-  view.shadowRoot
-    ?.querySelector<HTMLButtonElement>(".state-card .button")
-    ?.click();
-  await view.updateComplete;
+
+void boot().catch((error: unknown) => {
+  document.documentElement.dataset.ready = "error";
+  document.body.dataset.error =
+    error instanceof Error ? error.message : String(error);
+  console.error("[Inspector Learning lab]", error);
+});
+
+declare global {
+  interface Window {
+    __learningInspector?: WebInspectorElement;
+  }
 }
-document.documentElement.dataset.ready = "true";
+
+window.__learningInspector = inspector;

@@ -9,6 +9,7 @@ const emptySnapshot = () => ({
   schemaVersion: 1,
   projectKey: "project-safe-key",
   snapshotVersion: "snapshot-1",
+  webAppOrigin: "https://app.copilotkit.ai",
   configuration: { state: "not_configured" },
   pendingThreadCount: 0,
   run: { hasActiveRun: false, hasEverSucceeded: false, latest: null },
@@ -44,13 +45,42 @@ describe("Inspector Learning wire validation", () => {
   });
 
   it("rejects unsafe links and oversized evidence", () => {
-    expect(parseInspectorLearningUrl("javascript:alert(1)")).toBeUndefined();
     expect(
-      parseInspectorLearningUrl("http://example.com/learning"),
+      parseInspectorLearningUrl(
+        "javascript:alert(1)",
+        "https://app.copilotkit.ai",
+      ),
     ).toBeUndefined();
-    expect(parseInspectorLearningUrl("http://localhost:3000/learning")).toBe(
-      "http://localhost:3000/learning",
-    );
+    expect(
+      parseInspectorLearningUrl(
+        "http://example.com/learning",
+        "https://app.copilotkit.ai",
+      ),
+    ).toBeUndefined();
+    expect(
+      parseInspectorLearningUrl(
+        "https://attacker.example/learning",
+        "https://app.copilotkit.ai",
+      ),
+    ).toBeUndefined();
+    expect(
+      parseInspectorLearningUrl(
+        "https://app.copilotkit.ai.evil.test/learning",
+        "https://app.copilotkit.ai",
+      ),
+    ).toBeUndefined();
+    expect(
+      parseInspectorLearningUrl(
+        "http://localhost:3000/learning",
+        "http://localhost:3000",
+      ),
+    ).toBe("http://localhost:3000/learning");
+    expect(
+      parseInspectorLearningUrl(
+        "https://intelligence.customer.example/learning",
+        "https://intelligence.customer.example",
+      ),
+    ).toBe("https://intelligence.customer.example/learning");
 
     const snapshot = emptySnapshot();
     snapshot.insightsPage = {
@@ -66,13 +96,70 @@ describe("Inspector Learning wire validation", () => {
           totalThreadCount: 101,
           evidenceTruncated: true,
           evidence: Array.from({ length: 101 }, (_, index) => ({
+            status: "available",
             threadId: `thread-${index}`,
             threadName: null,
             messageIds: [],
-            updatedAt: "2026_unsafe",
+            updatedAt: "2026-09-03T00:00:00.000Z",
           })),
         },
       ],
+    };
+    expect(parseInspectorLearningSnapshotV1(snapshot)).toBeUndefined();
+  });
+
+  it("rejects required actions that are absent or point at another origin", () => {
+    const missingRuns = emptySnapshot();
+    missingRuns.pendingThreadCount = 1;
+    expect(parseInspectorLearningSnapshotV1(missingRuns)).toBeUndefined();
+
+    const missingCandidates = emptySnapshot();
+    missingCandidates.pendingCandidateCount = 1;
+    expect(parseInspectorLearningSnapshotV1(missingCandidates)).toBeUndefined();
+
+    const arbitraryOrigin = emptySnapshot();
+    arbitraryOrigin.links.learning = "https://attacker.example/learning";
+    expect(parseInspectorLearningSnapshotV1(arbitraryOrigin)).toBeUndefined();
+
+    const configuredOrigin = emptySnapshot();
+    configuredOrigin.webAppOrigin = "https://intelligence.customer.example";
+    configuredOrigin.links.learning =
+      "https://intelligence.customer.example/learning";
+    expect(parseInspectorLearningSnapshotV1(configuredOrigin)).toBeDefined();
+  });
+
+  it("accepts identifier-free unavailable evidence separately from unnamed evidence", () => {
+    const snapshot = emptySnapshot();
+    snapshot.insightsPage = {
+      page: 1,
+      pageSize: 4,
+      total: 1,
+      totalPages: 1,
+      items: [
+        {
+          id: "insight-1",
+          statement: "Verify the order.",
+          impact: "Avoids incorrect guidance.",
+          totalThreadCount: 2,
+          evidenceTruncated: false,
+          evidence: [
+            { status: "unavailable" },
+            {
+              status: "available",
+              threadId: "thread-2",
+              threadName: null,
+              messageIds: ["message-2"],
+              updatedAt: "2026-09-03T00:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(parseInspectorLearningSnapshotV1(snapshot)).toBeDefined();
+    snapshot.insightsPage.items[0].evidence[0] = {
+      status: "unavailable",
+      threadId: "former-id",
     };
     expect(parseInspectorLearningSnapshotV1(snapshot)).toBeUndefined();
   });

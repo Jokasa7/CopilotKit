@@ -21,13 +21,13 @@ const queryPage = (value: string | null): number | undefined =>
 export async function handleInspectorLearning({
   runtime,
   request,
-  threadEndpointsEnabled,
+  enabled,
 }: {
   readonly runtime: CopilotRuntimeLike;
   readonly request: Request;
-  readonly threadEndpointsEnabled: boolean;
+  readonly enabled: boolean;
 }): Promise<Response> {
-  if (!runtime.debug.enabled || !isIntelligenceRuntime(runtime)) {
+  if (!enabled || !runtime.debug.enabled || !isIntelligenceRuntime(runtime)) {
     return errorResponse(404, "Not found");
   }
   const url = new URL(request.url);
@@ -57,34 +57,7 @@ export async function handleInspectorLearning({
     );
     if (!snapshot)
       return errorResponse(502, "Invalid Inspector Learning response");
-    const response = threadEndpointsEnabled
-      ? snapshot
-      : {
-          ...snapshot,
-          configuration: {
-            state: "invalid" as const,
-            reason: "instrumentation" as const,
-          },
-          pendingThreadCount: 0,
-          run: { hasActiveRun: false, hasEverSucceeded: false, latest: null },
-          pendingCandidateCount: 0,
-          skillsPage: {
-            page: 1,
-            pageSize: 3 as const,
-            total: 0,
-            totalPages: 0,
-            items: [],
-          },
-          insightsPage: {
-            page: 1,
-            pageSize: 4 as const,
-            total: 0,
-            totalPages: 0,
-            items: [],
-          },
-          links: { ...snapshot.links, candidates: null, runs: null },
-        };
-    return new Response(JSON.stringify(response), { status: 200, headers });
+    return new Response(JSON.stringify(snapshot), { status: 200, headers });
   } catch (error) {
     if (error instanceof PlatformRequestError && error.status === 404) {
       return errorResponse(404, "Not found");

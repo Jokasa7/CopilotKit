@@ -6,6 +6,7 @@ const snapshot = {
   schemaVersion: 1,
   projectKey: "project-safe-key",
   snapshotVersion: "snapshot-1",
+  webAppOrigin: "https://app.copilotkit.ai",
   configuration: {
     state: "configured",
     container: { id: "container-1", name: "Production" },
@@ -52,7 +53,7 @@ describe("handleInspectorLearning", () => {
       request: new Request(
         "https://runtime.example/inspector-learning?agentId=support&skillsPage=2",
       ),
-      threadEndpointsEnabled: true,
+      enabled: true,
     });
 
     expect(response.status).toBe(200);
@@ -75,7 +76,7 @@ describe("handleInspectorLearning", () => {
         },
       }),
       request: new Request("https://runtime.example/inspector-learning"),
-      threadEndpointsEnabled: true,
+      enabled: true,
     });
     expect(hidden.status).toBe(404);
 
@@ -84,25 +85,19 @@ describe("handleInspectorLearning", () => {
       request: new Request(
         "https://runtime.example/inspector-learning?runtimeContainerId=attacker-scope",
       ),
-      threadEndpointsEnabled: true,
+      enabled: true,
     });
     expect(rejected.status).toBe(400);
   });
 
-  it("returns instrumentation-invalid data when Rich Threads are unavailable", async () => {
+  it("hides the route unless the handler explicitly opts in", async () => {
+    const fixture = runtime();
     const response = await handleInspectorLearning({
-      runtime: runtime(),
+      runtime: fixture,
       request: new Request("https://runtime.example/inspector-learning"),
-      threadEndpointsEnabled: false,
+      enabled: false,
     });
-    const body = await response.json();
-
-    expect(body).toMatchObject({
-      configuration: { state: "invalid", reason: "instrumentation" },
-      pendingThreadCount: 0,
-      pendingCandidateCount: 0,
-    });
-    expect(body.skillsPage.items).toEqual([]);
-    expect(body.insightsPage.items).toEqual([]);
+    expect(response.status).toBe(404);
+    expect(fixture.intelligence?.getInspectorLearning).not.toHaveBeenCalled();
   });
 });

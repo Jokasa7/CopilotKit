@@ -7,12 +7,15 @@ export interface InspectorLearningPage<T> {
   readonly items: readonly T[];
 }
 
-export interface InspectorLearningEvidence {
-  readonly threadId: string;
-  readonly threadName: string | null;
-  readonly messageIds: readonly string[];
-  readonly updatedAt: string;
-}
+export type InspectorLearningEvidence =
+  | {
+      readonly status: "available";
+      readonly threadId: string;
+      readonly threadName: string | null;
+      readonly messageIds: readonly string[];
+      readonly updatedAt: string;
+    }
+  | { readonly status: "unavailable" };
 
 export interface InspectorLearningInsight {
   readonly id: string;
@@ -36,6 +39,7 @@ export interface InspectorLearningSnapshotV1 {
   readonly schemaVersion: 1;
   readonly projectKey: string;
   readonly snapshotVersion: string;
+  readonly webAppOrigin: string;
   readonly configuration:
     | { readonly state: "not_configured" }
     | {
@@ -92,19 +96,42 @@ const integer = (value: unknown, minimum = 0): value is number =>
 const date = (value: unknown): value is string =>
   typeof value === "string" && !Number.isNaN(Date.parse(value));
 
-/** Accepts HTTPS links and explicit loopback HTTP links only. */
-export function parseInspectorLearningUrl(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.length > 4_000) return undefined;
+/**
+ * Accepts only the configured Intelligence web-app origin.
+ *
+ * Learning links are server-authored actions. Treating every HTTPS origin as
+ * trusted would let a misconfigured or compromised upstream turn Inspector
+ * copy into a navigation primitive for an arbitrary site.
+ */
+export function parseInspectorLearningUrl(
+  value: unknown,
+  trustedOrigin: unknown,
+): string | undefined {
+  if (
+    typeof value !== "string" ||
+    value.length > 4_000 ||
+    typeof trustedOrigin !== "string" ||
+    trustedOrigin.length > 2_000
+  ) {
+    return undefined;
+  }
   try {
     const parsed = new URL(value);
+    const configured = new URL(trustedOrigin);
     const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(
-      parsed.hostname,
+      configured.hostname,
     );
     if (
       parsed.username ||
       parsed.password ||
-      (parsed.protocol !== "https:" &&
-        !(parsed.protocol === "http:" && loopback))
+      configured.username ||
+      configured.password ||
+      configured.pathname !== "/" ||
+      configured.search ||
+      configured.hash ||
+      (configured.protocol !== "https:" &&
+        !(configured.protocol === "http:" && loopback)) ||
+      parsed.origin !== configured.origin
     ) {
       return undefined;
     }
@@ -115,8 +142,14 @@ export function parseInspectorLearningUrl(value: unknown): string | undefined {
 }
 
 function parseEvidence(value: unknown): InspectorLearningEvidence | undefined {
+  if (record(value) && value.status === "unavailable") {
+    return Object.keys(value).length === 1
+      ? { status: "unavailable" }
+      : undefined;
+  }
   if (
     !record(value) ||
+    value.status !== "available" ||
     !string(value.threadId, 128) ||
     !date(value.updatedAt)
   ) {
@@ -136,6 +169,7 @@ function parseEvidence(value: unknown): InspectorLearningEvidence | undefined {
     return undefined;
   }
   return {
+    status: "available",
     threadId: value.threadId,
     threadName: value.threadName,
     messageIds: [...value.messageIds],
@@ -312,21 +346,37 @@ export function parseInspectorLearningSnapshotV1(
     latest = value.run.latest as NonNullable<typeof latest>;
   }
   if (!record(value.links)) return undefined;
-  const learning = parseInspectorLearningUrl(value.links.learning);
+  const originUrl = parseInspectorLearningUrl(
+    value.webAppOrigin,
+    value.webAppOrigin,
+  );
+  if (!originUrl || new URL(originUrl).pathname !== "/") return undefined;
+  const webAppOrigin = new URL(originUrl).origin;
+  const learning = parseInspectorLearningUrl(
+    value.links.learning,
+    webAppOrigin,
+  );
   const candidates =
     value.links.candidates === null
       ? null
-      : parseInspectorLearningUrl(value.links.candidates);
+      : parseInspectorLearningUrl(value.links.candidates, webAppOrigin);
   const runs =
     value.links.runs === null
       ? null
-      : parseInspectorLearningUrl(value.links.runs);
-  if (!learning || candidates === undefined || runs === undefined)
+      : parseInspectorLearningUrl(value.links.runs, webAppOrigin);
+  if (
+    !learning ||
+    candidates === undefined ||
+    runs === undefined ||
+    (value.pendingThreadCount > 0 && runs === null) ||
+    (value.pendingCandidateCount > 0 && candidates === null)
+  )
     return undefined;
   return {
     schemaVersion: 1,
     projectKey: value.projectKey,
     snapshotVersion: value.snapshotVersion,
+    webAppOrigin,
     configuration,
     pendingThreadCount: value.pendingThreadCount,
     run: {

@@ -587,7 +587,7 @@ describe("handleGetRuntimeInfo", () => {
     expect(data).not.toHaveProperty("inspectorLearning");
   });
 
-  it("advertises Inspector Learning only for a debug Intelligence runtime with thread endpoints", async () => {
+  it("advertises Inspector Learning only for a debug Intelligence runtime with explicit opt-in", async () => {
     const runtime = createIntelligenceRuntimeLike({
       debug: {
         enabled: true,
@@ -600,12 +600,14 @@ describe("handleGetRuntimeInfo", () => {
     const enabledResponse = await handleGetRuntimeInfo({
       runtime,
       request: mockRequest,
-      threadEndpointsEnabled: true,
+      threadEndpointsEnabled: false,
+      inspectorLearningEnabled: true,
     });
     const disabledResponse = await handleGetRuntimeInfo({
       runtime,
       request: mockRequest,
-      threadEndpointsEnabled: false,
+      threadEndpointsEnabled: true,
+      inspectorLearningEnabled: false,
     });
 
     expect(enabledResponse.status).toBe(200);
@@ -617,6 +619,16 @@ describe("handleGetRuntimeInfo", () => {
     expect(await disabledResponse.json()).not.toHaveProperty(
       "inspectorLearning",
     );
+  });
+
+  it("does not advertise Inspector Learning when debug mode is off", async () => {
+    const response = await handleGetRuntimeInfo({
+      runtime: createIntelligenceRuntimeLike(),
+      request: mockRequest,
+      inspectorLearningEnabled: true,
+    });
+
+    expect(await response.json()).not.toHaveProperty("inspectorLearning");
   });
 
   it("should return a2uiEnabled: true when runtime has a2ui configured", async () => {
