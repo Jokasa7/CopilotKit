@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inspector Learning state lab</title>
+    <script type="module" src="/dev/learning-states.ts"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        background: #ececf1;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100vh;
+        padding: 32px;
+      }
+
+      .frame {
+        width: min(980px, 100%);
+        min-height: calc(100vh - 64px);
+        margin: 0 auto;
+        overflow: hidden;
+        border: 1px solid #d4d4dc;
+        border-radius: 14px;
+        background: #f7f7fa;
+        box-shadow: 0 18px 55px rgba(24, 24, 32, 0.12);
+      }
+
+      cpk-learning-view {
+        min-height: calc(100vh - 66px);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="frame"><cpk-learning-view></cpk-learning-view></div>
+  </body>
+</html>

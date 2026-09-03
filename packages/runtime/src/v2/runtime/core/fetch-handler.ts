@@ -394,7 +394,7 @@ export function createCopilotRuntimeHandler(
         ) {
           request = createJsonRequest(request, methodCall.body);
         } else if (route.method === "inspector/learning") {
-          const url = new URL(request.url);
+          const learningUrl = new URL(request.url);
           for (const key of [
             "agentId",
             "skillsPage",
@@ -402,10 +402,10 @@ export function createCopilotRuntimeHandler(
           ] as const) {
             const value = methodCall.params?.[key];
             if (typeof value === "string" || typeof value === "number") {
-              url.searchParams.set(key, String(value));
+              learningUrl.searchParams.set(key, String(value));
             }
           }
-          request = new Request(url, {
+          request = new Request(learningUrl, {
             method: "GET",
             headers: request.headers,
             signal: request.signal,
